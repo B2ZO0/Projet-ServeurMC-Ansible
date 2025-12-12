@@ -1,0 +1,120 @@
+---
+- name: Création et préparation des conteneurs LXC Minecraft
+  hosts: proxmox
+  gather_facts: false
+  vars:
+    ct_ids_list: "{{ ct_ids.split(',') | map('int') | list }}"
+
+  tasks:
+    - name: Créer les conteneurs s'ils n'existent pas
+      shell: |
+        pct status {{ item }} >/dev/null 2>&1 || pct create {{ item }} {{ ct_template }} \
+          --hostname {{ ct_hostname_prefix }}-{{ item }} \
+          --cores {{ ct_cores }} \
+          --memory {{ ct_memory }} \
+          --rootfs {{ ct_storage }}:{{ ct_rootfs_gb }} \
+          --net0 name=eth0,bridge={{ ct_bridge }},ip={{ ct_base_ip }}{{ item }}/24,gw={{ ct_gateway }},mtu={{ ct_mtu }} \
+          --nameserver {{ ct_nameserver }} \
+          --password {{ ct_password }} \
+          --unprivileged 0 \
+          --onboot 1
+      args:
+        executable: /bin/bash
+      loop: "{{ ct_ids_list }}"
+
+    - name: Démarrer les conteneurs
+      command: pct start {{ item }}
+      loop: "{{ ct_ids_list }}"
+      ignore_errors: true
+
+    - name: Pause boot
+      pause:
+        seconds: 5
+
+    - name: Installer SSH + sudo + outils dans les conteneurs
+      shell: |
+        pct exec {{ item }} -- bash -c "
+        apt update &&
+        apt install -y sudo openssh-server curl tar screen &&
+        systemctl enable ssh --now
+        "
+      loop: "{{ ct_ids_list }}"
+
+- name: Installation du serveur Minecraft
+  hosts: minecraft
+  become: true
+
+  tasks:
+    - name: Update apt
+      apt:
+        update_cache: yes
+
+    - name: Installer outils nécessaires
+      apt:
+        name:
+          - curl
+          - tar
+          - screen
+        state: present
+
+    - name: Créer /opt/java21
+      file:
+        path: /opt/java21
+        state: directory
+
+    - name: Télécharger Java 21 (Temurin JRE)
+      get_url:
+        url: https://github.com/adoptium/temurin21-binaries/releases/latest/download/OpenJDK21U-jre_x64_linux_hotspot.tar.gz
+        dest: /tmp/java21.tar.gz
+
+    - name: Extraire Java 21
+      unarchive:
+        src: /tmp/java21.tar.gz
+        dest: /opt/java21
+        remote_src: yes
+        extra_opts: [--strip-components=1]
+
+    - name: Définir JAVA_HOME
+      copy:
+        dest: /etc/profile.d/java.sh
+        content: |
+          export JAVA_HOME=/opt/java21
+          export PATH=$JAVA_HOME/bin:$PATH
+
+    - name: Créer utilisateur minecraft
+      user:
+        name: minecraft
+        system: yes
+        shell: /bin/bash
+
+    - name: Créer dossier serveur Minecraft
+      file:
+        path: /opt/minecraft/server
+        state: directory
+        owner: minecraft
+        group: minecraft
+
+    - name: Télécharger server.jar (OFFICIEL)
+      get_url:
+        url: https://piston-data.mojang.com/v1/objects/64bb6d763bed0a9f1d632ec347938594144943ed/server.jar
+        dest: /opt/minecraft/server/server.jar
+        owner: minecraft
+        group: minecraft
+
+    - name: Accepter EULA
+      copy:
+        dest: /opt/minecraft/server/eula.txt
+        content: "eula=true\n"
+        owner: minecraft
+        group: minecraft
+
+    - name: Script de démarrage
+      copy:
+        dest: /opt/minecraft/server/start.sh
+        owner: minecraft
+        group: minecraft
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          cd /opt/minecraft/server
+          screen -S minecraft -dm java -Xms1G -Xmx2G -jar server.jar nogui
