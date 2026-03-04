@@ -96,3 +96,6 @@ Depuis la machine de contrôle naviguez dans le dossier du projet et exécutez l
 
 ```bash
 ansible-playbook -i inventory.ini deploy_minecraft_lxc.yml
+
+<img width="1692" height="1848" alt="image" src="https://github.com/user-attachments/assets/7a48caae-cb19-44c0-a4c0-3a4743edac56" />
+
