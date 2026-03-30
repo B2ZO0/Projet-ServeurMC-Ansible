@@ -2,7 +2,6 @@
 - name: Création et préparation des conteneurs LXC Minecraft
   hosts: proxmox
   gather_facts: false
-
   tasks:
     - name: Créer les conteneurs s'ils n'existent pas
       shell: |
@@ -20,10 +19,12 @@
         executable: /bin/bash
       loop: "{{ ct_ids }}"
 
-    - name: Démarrer les conteneurs
-      command: pct start {{ item }}
+    - name: Démarrer les conteneurs (si pas déjà démarrés)
+      shell: |
+        pct status {{ item }} | grep -q running || pct start {{ item }}
+      args:
+        executable: /bin/bash
       loop: "{{ ct_ids }}"
-      ignore_errors: true
 
     - name: Pause boot
       pause:
@@ -42,7 +43,6 @@
 - name: Installation du serveur Minecraft
   hosts: minecraft
   become: true
-
   tasks:
     - name: Update apt
       apt:
