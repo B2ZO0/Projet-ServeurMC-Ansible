@@ -95,6 +95,8 @@ Vous pouvez modifier la variable `ct_ids` pour choisir le nombre de serveurs à 
 Depuis la machine de contrôle naviguez dans le dossier du projet et exécutez la commande suivante :
 
 ```bash
+# Le mot de passe root des conteneurs n'est plus dans le dépôt : il est lu dans la variable d'environnement CT_PASSWORD
+export CT_PASSWORD='choisis-un-mot-de-passe-solide'
 ansible-playbook -i inventory.ini deploy_minecraft_lxc.yml
 ```
 
